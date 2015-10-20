@@ -187,6 +187,11 @@ def find_vocaroo_links_in_string(to_scan):
     return vocaroo_links
 
 
+def rest_search():
+    pass
+
+
+
 def debug():
     """where stuff is called to debug and test"""
     session = sql_functions.connect_to_db()
