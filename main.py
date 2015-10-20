@@ -13,6 +13,7 @@ import re
 import os
 import sqlalchemy# Database library
 
+import imgur
 import config # Settings and configuration
 import lockfiles # MutEx lockfiles
 from utils import * # General utility functions
@@ -59,7 +60,8 @@ def save_vocaroo_link(vocaroo_link,output_dir):
     return
 
 
-def find_vocaroo_links_in_db(session,start_id,stop_id,output_dir):
+def find_imgur_links_in_db(session,start_id,stop_id,output_dir):
+    assert(False)# TODO
     """Scan through an asagi database and find vocaroo links.
     return a list of links"""
     logging.info("Starting to process posts from the DB. ("+repr(start_id)+" to "+repr(stop_id)+")")
@@ -75,25 +77,28 @@ def find_vocaroo_links_in_db(session,start_id,stop_id,output_dir):
         post_counter += 1
         logging.debug("post_counter: "+repr(post_counter))
         comment = post_row["comment"]
+        thread_number = post_row["thread_num"]
         logging.debug("comment: "+repr(comment))
         if comment is None:# Skip post if no comment
             continue
         assert_is_string(comment)
 
         # Find links
-        vocaroo_links = find_vocaroo_links_in_string(to_scan=comment)
-        number_of_vocaroo_links_found = len(vocaroo_links)
-        logging.debug("vocaroo_links: "+repr(vocaroo_links))
+        links = find_imgur_links_in_string(to_scan=comment)
+        number_of_links_found = len(links)
+        logging.debug("links: "+repr(links))
+
+        post_output_path = os.path.join(output_dir, str(thread_number))
 
         # Save links
-        for vocaroo_link in vocaroo_links:
-            save_vocaroo_link(
-                vocaroo_link,
-                output_dir,
+        for link in links:
+            imgur.save_imgur(
+                link,
+                post_output_path
                 )
         continue
     logging.info("Finished processing this batch of posts. ("+repr(start_id)+" to "+repr(stop_id)+")")
-    return number_of_vocaroo_links_found
+    return number_of_links_found
 
 
 def scan_db(session,output_dir,start_id=0,stop_id=None,step_number=1000):
@@ -136,27 +141,39 @@ def scan_db(session,output_dir,start_id=0,stop_id=None,step_number=1000):
     low_id = start_id
     high_id = start_id +step_number
 
-    total_number_of_vocaroo_links_found = 0
+    total_number_of_links_found = 0
     # Loop to process posts in batches to keep memory use lower
     while low_id <= stop_id:
         logging.debug("low_id: "+repr(low_id)+" , high_id:"+repr(high_id))
         # Process this group of rows
-        number_of_vocaroo_links_found = find_vocaroo_links_in_db(
+        number_of_links_found = find_imgur_links_in_db(
             session=session,
             start_id=low_id,
             stop_id=high_id,
             output_dir=output_dir,
             )
-        total_number_of_vocaroo_links_found += number_of_vocaroo_links_found
+        total_number_of_links_found += number_of_links_found
         # Increase ID numbers
         low_id = high_id
         high_id += step_number
         continue
 
-    logging.info("total_number_of_vocaroo_links_found: "+repr(total_number_of_vocaroo_links_found))
+    logging.info("total_number_of_links_found: "+repr(total_number_of_links_found))
     logging.info("Finished scanning DB")
-    return total_number_of_vocaroo_links_found
+    return total_number_of_links_found
 
+
+def find_imgur_links_in_string(to_scan):
+    """Take a string, such as an archived post's comment,
+     and find imgur links in it if there are any"""
+    # Example links that we need to find
+    # http://imgur.com/a/AMibi#0
+    # http://imgur.com/UQ1j8OT,2PvFmxV#1
+    # http://imgur.com/UQ1j8OT
+    # (imgur\.com/(?:a/)?[\w#,]+)
+    imgur_links = re.findall("""(imgur\.com/(?:a/)?[\w#,]+)""", to_scan, re.DOTALL)
+    #logging.debug("imgur_links: "+repr(imgur_links))
+    return imgur_links
 
 
 
@@ -172,20 +189,7 @@ def find_vocaroo_links_in_string(to_scan):
 
 def debug():
     """where stuff is called to debug and test"""
-##    save_vocaroo_link(
-##        vocaroo_link="http://vocaroo.com/i/s0xtktsit8rE",
-##        output_dir=os.path.join("debug", "output"),
-##        )
-
     session = sql_functions.connect_to_db()
-
-##    find_vocaroo_links_in_db(
-##        session=session,
-##        start_id=0,
-##        stop_id=1000,
-##        output_dir=os.path.join("debug", "output")
-##        )
-
     scan_db(
         session=session,
         output_dir=os.path.join("output"),
@@ -199,7 +203,7 @@ def debug():
 
 def main():
     try:
-        setup_logging(log_file_path=os.path.join("debug","asagi_vocaroo_grabber-log.txt"))
+        setup_logging(log_file_path=os.path.join("debug","asagi_imgur_grabber-log.txt"))
 
         session = sql_functions.connect_to_db()
         scan_db(

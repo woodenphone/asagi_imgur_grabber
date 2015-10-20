@@ -532,93 +532,6 @@ def hash_file(file_path):
     return sha512base16_hash
 
 
-def generate_filename(ext,sha512base16_hash=None):
-    """Abstraction for generating filenames, this is so only one function needs to care about it
-    Take the file extention and maybe some other info and return a filename"""
-##    # Timestamp filename
-##    timestamp = str(get_current_unix_time())
-##    filename = timestamp+"."+ext
-    # Base16 hash filename
-    filename = sha512base16_hash+"."+ext
-    return filename
-
-
-def generate_path(root_path,filename):
-    """Abstraction for generating file paths
-    Take a filename and create a path for it
-    Uses /12/34/56/ style due to folders containing 16^n subfolders
-    where n is number of digits per foldername"""
-    file_path = os.path.join(
-        root_path,
-        filename[0:2],# First two chars of filename
-        filename[2:4],# Second two chars of filename
-        filename[4:6],# Third two chars of filename
-        filename
-        )
-    return file_path
-
-
-def clean_blog_url(raw_url):
-    """Given a blog name or URL, mangle it into something the tumblr API will probably like"""
-    # Example urls that need handling:
-    # http://jessicaanner.tumblr.com/post/113520547711/animated-versions-here-main-view-webm-gif
-    # http://havesomemoore.tumblr.com/
-    # http://pwnypony.com/
-    # (?:https?://)([^#/'"]+)
-    stripped_url = raw_url.strip("\r\n\t ")
-    logging.debug("stripped_url: "+repr(stripped_url))
-    blog_url_regex = """(?:https?://)?([^#/'"]+)"""
-    blog_url_search = re.search(blog_url_regex, stripped_url, re.IGNORECASE)
-    if blog_url_search:
-        blog_url = blog_url_search.group(1)
-        return blog_url
-    else:
-        logging.error("Can't parse list item! Skipping it.")
-        logging.error("clean_blog_url()"+" "+"raw_url"+": "+repr(raw_url))
-        return ""
-
-
-def clean_list_line(line):
-    stripped_url = line.strip("\r\n\t ")
-    return stripped_url
-
-
-def import_blog_list(list_file_path="tumblr_todo_list.txt"):
-    """Import (open and parse) list file of blogs to save
-    return a list of api-friendly blog url strings"""
-    logging.debug("import_blog_list() list_file_path: "+repr(list_file_path))
-    # Make sure list file folder exists
-    list_file_folder =  os.path.dirname(list_file_path)
-    if list_file_folder:
-        if not os.path.exists(list_file_folder):
-            os.makedirs(list_file_folder)
-    # Create new empty list file if no list file exists
-    if not os.path.exists(list_file_path):
-        logging.debug("import_blog_list() Blog list file not found, creating it.")
-        new_file = open(list_file_path, "w")
-        new_file.write('# Add one URL per line, comments start with a #, nothing but username on a line that isnt a comment\n\n')
-        new_file.close()
-        return []
-    # Read each line from the list file and process it
-    blog_urls = []
-    list_file = open(list_file_path, "rU")
-    line_counter = 0
-    for line in list_file:
-        line_counter += 1
-        # Strip empty and comment lines
-        if line[0] in ["#", "\r", "\n"]:
-            continue
-        else:
-            cleaned_url = clean_list_line(line)
-            if cleaned_url:
-                blog_urls.append(cleaned_url+u"")
-            else:
-                logging.error("import_blog_list(): Cleaning line "+repr(line_counter)+" : "+repr(line)+"Failed!")
-    blog_urls = uniquify(blog_urls)
-    logging.debug("import_blog_list() blog_urls: "+repr(blog_urls))
-    return blog_urls
-
-
 def appendlist(lines,list_file_path="tumblr_done_list.txt",initial_text="# List of completed items.\n"):
     # Append a string or list of strings to a file; If no file exists, create it and append to the new file.
     # Strings will be seperated by newlines.
@@ -658,12 +571,6 @@ def get_file_extention(file_path):
     if file_extention_search:
         file_extention = file_extention_search.group(1)
         return file_extention
-
-
-def parse_tumblr_timsetamp_string(date_string):
-    """Parse tumblr datestring to unix time
-    u'date': u'2014-01-24 19:40:00 GMT'"""
-    return datetime.datetime.strptime(date_string, "%Y-%m-%d %H:%M:%S %Z")
 
 
 def split_list(list_in,number_of_pieces):
