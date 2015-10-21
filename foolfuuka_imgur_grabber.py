@@ -12,12 +12,19 @@ import logging
 import re
 import os
 import requests
+import copy
+from datetime import datetime
+import sys
+from bs4 import BeautifulSoup
+
 
 import imgur
 import config # Settings and configuration
 import lockfiles # MutEx lockfiles
 from utils import * # General utility functions
-from bs4 import BeautifulSoup
+
+
+
 
 def scan_site():
     target_board_shortnames = set(["mlp","tg"])
@@ -31,6 +38,7 @@ def scan_site():
         search_url = ("https://desustorage.org/_/api/chan/search/?board=mlp&text=imgur&start="+
             str(start_year)+"-"+str(start_month)+"-1&end="+
             str(end_year)+"-"+str(end_month)+"-1&page="+str(counter))
+        logging.debug("search_url: "+repr(search_url))
         r=requests.get(search_url)
         data=r.text
         #logging.debug("data: "+repr(data))
@@ -76,12 +84,77 @@ def find_imgur_links_in_string(to_scan):
     return imgur_links
 
 
+def ruett_scan():
+    """Conversion from code by DER RUETTLER to do what we want"""
+    currentYear=datetime.datetime.now().year
+    currentMonth=datetime.datetime.now().month
+    year=2012
+    month=2
+    year2=2012
+    month2=3
+
+    pasteSet = set()
+
+    #This loop is executed as long as month and year are below a certain treshold
+    while year*12+month <= currentYear*12+currentMonth:
+        print()
+        logging.info('Timeframe: '+repr(month)+repr(year)+' - '+repr(month2)+repr(year2))
+        #200=maximum number of pages returned by archive.moe
+        for i in range(200):
+            logging.info('Extracting from page '+str(i+1))
+            #constructing the URL:
+            url = "https://desustorage.org/mlp/search/text/imgur/start/"+str(year)+"-"+str(month)+"-1/end/"+str(year2)+"-"+str(month2)+"-1/page/"+str(i+1)+"/#"
+            logging.debug("url: "+repr(url))
+            #getting the source code:
+            attempt_counter = 0
+            while attempt_counter < 10:
+                attempt_counter += 1
+                try:
+                    r=requests.get(url)
+                    data=r.text
+                    save_file(
+                        file_path = os.path.join("debug","ruett_scan.htm"),
+                        data = data.encode("iso-8859-15", "replace"),
+                        force_save = True,
+                        allow_fail = False
+                        )
+                    break
+                except requests.exceptions.SSLError, err:
+                    logging.exception(err)
+                    continue
+
+            #transforming the source code into a tree of objects:
+            soup = BeautifulSoup(data)
+
+            #check whether archive.moe still returns results:
+            abort = str(soup.find('h4'))
+            if abort=='<h4 class="alert-heading">Error!</h4>':
+                break
+
+            #find pastebin links and add them to their respective sets:
+            for link in soup.find_all(href=re.compile('(?:http://)?(?:www.)?(?:i.)?imgur.com')):
+                pastebinLink = link.get('href')
+                if not pastebinLink in pasteSet:
+                    logging.debug("Adding new link: "+repr(pastebinLink))
+                    pasteSet.add(pastebinLink)
+        month=month+1
+        month2=month2+1
+        if month==13:
+            month=1
+            year=year+1
+        if month2==13:
+            month2=1
+            year2=year2+1
+
+    logging.info('Extraction finished')
+    return pasteSet
+
 
 def main():
     try:
         setup_logging(log_file_path=os.path.join("debug","foolfuuka_imgur_grabber-log.txt"))
 
-        found_links_set = scan_site()
+        found_links_set = ruett_scan()
         found_links = list(found_links_set)
         appendlist(
             lines=found_links,
