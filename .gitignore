@@ -1,3 +1,5 @@
 config.py
 *.pyc
 debug/
+output/
+fould_imgur_links.txt

@@ -15,7 +15,7 @@ from imgurpython.helpers.error import ImgurClientError
 from utils import *
 import config
 
-
+client = None# Keep client cached to avoid needing to reconnect
 
 
 def download_image(url,output_dir):

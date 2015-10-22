@@ -150,17 +150,47 @@ def ruett_scan():
     return pasteSet
 
 
+def scan_to_file(list_path):
+    found_links_set = ruett_scan()
+    found_links = list(found_links_set)
+    appendlist(
+        lines=found_links,
+        list_file_path=os.path.join("debug","fould_imgur_links.txt"),
+        initial_text="# List of completed items.\n"
+        )
+    return
+
+
+def download_link_list(list_path,output_path):
+    logging.debug("Downloading imgur link list...")
+    saved_links = set()# Low quality, but low memory dedupe of links
+    with open(list_path, "r") as f:
+        for line in f:
+            logging.debug("line: "+repr(line))
+            if line[0] == "#":# Skip comments
+                continue
+            stripped_url = line.strip("\r\n\t ")
+            if line not in saved_links:# Low quality, but low memory dedupe of links
+                imgur.save_imgur(
+                    link=stripped_url,
+                    output_dir=output_path
+                    )
+            continue
+    logging.debug("Finished downloading imgur link list.")
+    return
+
+
 def main():
     try:
         setup_logging(log_file_path=os.path.join("debug","foolfuuka_imgur_grabber-log.txt"))
 
-        found_links_set = ruett_scan()
-        found_links = list(found_links_set)
-        appendlist(
-            lines=found_links,
-            list_file_path=os.path.join("debug","fould_imgur_links.txt"),
-            initial_text="# List of completed items.\n"
+        list_path = os.path.join("fould_imgur_links.txt")
+        #scan_to_file(list_path)
+        download_link_list(
+            list_path,
+            output_path=os.path.join("output")
             )
+
 
     except Exception, e:# Log fatal exceptions
         logging.critical("Unhandled exception!")
