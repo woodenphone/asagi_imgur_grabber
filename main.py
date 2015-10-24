@@ -4,13 +4,19 @@
 #
 # Author:      User
 #
-# Created:     15/10/2015
+# Created:     20/10/2015
 # Copyright:   (c) User 2015
 # Licence:     <your licence>
 #-------------------------------------------------------------------------------
 import logging
 import re
 import os
+import requests
+import copy
+from datetime import datetime
+import sys
+from bs4 import BeautifulSoup
+
 
 import imgur
 import config # Settings and configuration
@@ -18,108 +24,6 @@ import lockfiles # MutEx lockfiles
 from utils import * # General utility functions
 
 
-
-def find_imgur_links_in_db(session,start_id,stop_id,output_dir):
-    assert(False)# TODO
-    """Scan through an asagi database and find vocaroo links.
-    return a list of links"""
-    logging.info("Starting to process posts from the DB. ("+repr(start_id)+" to "+repr(stop_id)+")")
-    # Request the posts from the DB
-    posts_query = sqlalchemy.select([Board]).\
-        where(Board.doc_id >= start_id).\
-        where(Board.doc_id <= stop_id)
-    post_rows = session.execute(posts_query)
-
-    # Scan each post requested, downloading any found links
-    post_counter = 0
-    for post_row in post_rows:
-        post_counter += 1
-        logging.debug("post_counter: "+repr(post_counter))
-        comment = post_row["comment"]
-        thread_number = post_row["thread_num"]
-        logging.debug("comment: "+repr(comment))
-        if comment is None:# Skip post if no comment
-            continue
-        assert_is_string(comment)
-
-        # Find links
-        links = find_imgur_links_in_string(to_scan=comment)
-        number_of_links_found = len(links)
-        logging.debug("links: "+repr(links))
-
-        post_output_path = os.path.join(output_dir, str(thread_number))
-
-        # Save links
-        for link in links:
-            imgur.save_imgur(
-                link,
-                post_output_path
-                )
-        continue
-    logging.info("Finished processing this batch of posts. ("+repr(start_id)+" to "+repr(stop_id)+")")
-    return number_of_links_found
-
-
-def scan_db(session,output_dir,start_id=0,stop_id=None,step_number=1000):
-    """Scan over a DB table of arbitrary size and process all rows"""
-    logging.info("Scanning DB...")
-
-    # Find lowest ID in DB
-    lowest_id_query = sqlalchemy.select([Board]).\
-        order_by(sqlalchemy.asc(Board.doc_id)).\
-        limit(1)
-    lowest_id_rows = session.execute(lowest_id_query)
-    lowest_id_row = lowest_id_rows.fetchone()
-    lowest_id_in_table = lowest_id_row["doc_id"]
-    logging.info("lowest_id_in_table: "+repr(lowest_id_in_table))
-
-    # Find highest ID in DB
-    highest_id_query = sqlalchemy.select([Board]).\
-        order_by(sqlalchemy.desc(Board.doc_id)).\
-        limit(1)
-    highest_id_rows = session.execute(highest_id_query)
-    highest_id_row = highest_id_rows.fetchone()
-    highest_id_in_table = highest_id_row["doc_id"]
-    logging.info("highest_id_in_table: "+repr(highest_id_in_table))
-
-    # If stop_id isn't set, use the highest currently existing ID in the table
-    if stop_id is None:
-        stop_id = highest_id_in_table
-
-    # Prevent the start_id from being too low
-    if start_id < lowest_id_in_table:
-        logging.warning("Start number was lower than the lowest ID in the table!")
-        if start_id <= stop_id:
-            start_id = lowest_id_in_table
-        else:
-            logging.error("Start ID was greater than stop ID!")
-            assert(False)
-            return
-
-    # Setup id number values for initial group
-    low_id = start_id
-    high_id = start_id +step_number
-
-    total_number_of_links_found = 0
-    # Loop to process posts in batches to keep memory use lower
-    while low_id <= stop_id:
-        logging.debug("low_id: "+repr(low_id)+" , high_id:"+repr(high_id))
-        # Process this group of rows
-        number_of_links_found = find_imgur_links_in_db(
-            session=session,
-            start_id=low_id,
-            stop_id=high_id,
-            output_dir=output_dir,
-            )
-        total_number_of_links_found += number_of_links_found
-        # Increase ID numbers
-        low_id = high_id
-        high_id += step_number
-        continue
-
-    logging.info("total_number_of_links_found: "+repr(total_number_of_links_found))
-    logging.info("Finished scanning DB")
-    return total_number_of_links_found
 
 
 def find_imgur_links_in_string(to_scan):
@@ -136,47 +40,116 @@ def find_imgur_links_in_string(to_scan):
 
 
 
-def find_vocaroo_links_in_string(to_scan):
-    """Take a string, such as an archived post's comment,
-     and find vocaroo links in it if there are any"""
-    # http://vocaroo.com/i/s0xtktsit8rE
-    # (?:https?://)?(?:www\.)?vocaroo.com/i/\w+
-    vocaroo_links = re.findall("""(?:https?://)?(?:www\.)?vocaroo.com/i/\w+""", to_scan, re.DOTALL)
-    #logging.debug("vocaroo_links: "+repr(vocaroo_links))
-    return vocaroo_links
+def ruett_scan(search_term="imgur",link_pattern="(?:http://)?(?:www.)?(?:i.)?imgur.com'"):
+    """Conversion from code by DER RUETTLER to do what we want"""
+    currentYear=datetime.datetime.now().year
+    currentMonth=datetime.datetime.now().month
+    year=2012
+    month=2
+    year2=2012
+    month2=3
+
+    link_set = set()# For cheap deduplication
+    link_list = []# So we can preserve order
+
+    #This loop is executed as long as month and year are below a certain treshold
+    while year*12+month <= currentYear*12+currentMonth:
+        print()
+        logging.info('Timeframe: '+repr(month)+repr(year)+' - '+repr(month2)+repr(year2))
+        #200=maximum number of pages returned by archive.moe
+        for i in range(200):
+            logging.info('Extracting from page '+str(i+1))
+            #constructing the URL:
+            url = "https://desustorage.org/mlp/search/text/"+search_term+"/start/"+str(year)+"-"+str(month)+"-1/end/"+str(year2)+"-"+str(month2)+"-1/page/"+str(i+1)+"/#"
+            logging.debug("url: "+repr(url))
+            #getting the source code:
+            attempt_counter = 0
+            while attempt_counter < 10:
+                attempt_counter += 1
+                try:
+                    r=requests.get(url)
+                    data=r.text
+                    save_file(
+                        file_path = os.path.join("debug","ruett_scan.htm"),
+                        data = data.encode("iso-8859-15", "replace"),
+                        force_save = True,
+                        allow_fail = False
+                        )
+                    break
+                except requests.exceptions.SSLError, err:
+                    logging.exception(err)
+                    continue
+
+            #transforming the source code into a tree of objects:
+            soup = BeautifulSoup(data)
+
+            #check whether archive.moe still returns results:
+            abort = str(soup.find('h4'))
+            if abort=='<h4 class="alert-heading">Error!</h4>':
+                break
+
+            #find pastebin links and add them to their respective sets:
+            for link_result in soup.find_all(href=re.compile(link_pattern)):
+                link = link_result.get('href')
+                if not link in link_set:
+                    logging.debug("Adding new link: "+repr(link))
+                    link_set.add(link)
+                    link_list.append(link)
+        month=month+1
+        month2=month2+1
+        if month==13:
+            month=1
+            year=year+1
+        if month2==13:
+            month2=1
+            year2=year2+1
+
+    logging.info('Extraction finished')
+    return link_list
 
 
-def rest_search():
-    pass
 
-
-
-def debug():
-    """where stuff is called to debug and test"""
-    session = sql_functions.connect_to_db()
-    scan_db(
-        session=session,
-        output_dir=os.path.join("output"),
-        start_id=0,
-        stop_id=None,
-        step_number=1000
+def scan_to_file(list_path):
+    found_links_set = ruett_scan()
+    found_links = list(found_links_set)
+    appendlist(
+        lines=found_links,
+        list_file_path=os.path.join("debug","fould_imgur_links.txt"),
+        initial_text="# List of completed items.\n"
         )
     return
 
 
+def download_link_list(list_path,output_path):
+    logging.debug("Downloading imgur link list...")
+    saved_links = set()# Low quality, but low memory dedupe of links
+    with open(list_path, "r") as f:
+        for line in f:
+            logging.debug("line: "+repr(line))
+            if line[0] == "#":# Skip comments
+                continue
+            stripped_url = line.strip("\r\n\t ")
+            if line not in saved_links:# Low quality, but low memory dedupe of links
+                imgur.save_imgur(
+                    link=stripped_url,
+                    output_dir=output_path
+                    )
+            continue
+    logging.debug("Finished downloading imgur link list.")
+    return
+
 
 def main():
     try:
-        setup_logging(log_file_path=os.path.join("debug","asagi_imgur_grabber-log.txt"))
+        setup_logging(log_file_path=os.path.join("debug","foolfuuka_imgur_grabber-log.txt"))
 
-        session = sql_functions.connect_to_db()
-        scan_db(
-            session=session,
-            output_dir = config.output_dir,
-            start_id = config.start_id,
-            stop_id = config.stop_id,
-            step_number = config.step_number
+        list_path = os.path.join("fould_imgur_links.txt")
+        #scan_to_file(list_path)
+        download_link_list(
+            list_path,
+            output_path=os.path.join("output")
             )
+
 
     except Exception, e:# Log fatal exceptions
         logging.critical("Unhandled exception!")

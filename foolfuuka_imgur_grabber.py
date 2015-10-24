@@ -26,51 +26,6 @@ from utils import * # General utility functions
 
 
 
-def scan_site():
-    target_board_shortnames = set(["mlp","tg"])
-    target_field_names = set(["comment", "title", "email"])
-    link_set = set()
-    counter = -1
-    while counter < 20:
-        counter += 1
-        logging.debug("Page: "+repr(counter))
-
-        search_url = ("https://desustorage.org/_/api/chan/search/?board=mlp&text=imgur&start="+
-            str(start_year)+"-"+str(start_month)+"-1&end="+
-            str(end_year)+"-"+str(end_month)+"-1&page="+str(counter))
-        logging.debug("search_url: "+repr(search_url))
-        r=requests.get(search_url)
-        data=r.text
-        #logging.debug("data: "+repr(data))
-        soup = BeautifulSoup(data, "lxml")
-        #logging.debug("soup: "+repr(soup))
-
-        decoded_page = json.loads(data)
-        posts = decoded_page[0]["posts"]
-        for post_dict in posts:
-            board_shortname = post_dict["board"]["shortname"]
-            if board_shortname in target_board_shortnames:
-                for target_field_name in target_field_names:
-                    field_data = post_dict[target_field_name]
-                    if field_data is None:# Prevent None object from being sent to regex stuff
-                        continue
-                    logging.debug("field_data: "+repr(field_data))
-                    link_urls = find_imgur_links_in_string(field_data)
-                    for link_url in link_urls:
-                        if not link_url in link_set:
-                            logging.debug("Adding new link: "+repr(link_url))
-                            link_set.add(link_url)
-            else:
-                logging.error("Board was not correct, fix URL")
-
-        #check whether archive.moe still returns results:
-        abort = str(soup.find('h4'))
-        if abort=='<h4 class="alert-heading">Error!</h4>':
-            logging.debug("Stopping because abort string was found")
-            break
-    return link_set
-
-
 def find_imgur_links_in_string(to_scan):
     """Take a string, such as an archived post's comment,
      and find imgur links in it if there are any"""
@@ -84,7 +39,8 @@ def find_imgur_links_in_string(to_scan):
     return imgur_links
 
 
-def ruett_scan():
+
+def ruett_scan(search_term="imgur",link_pattern="(?:http://)?(?:www.)?(?:i.)?imgur.com'"):
     """Conversion from code by DER RUETTLER to do what we want"""
     currentYear=datetime.datetime.now().year
     currentMonth=datetime.datetime.now().month
@@ -93,7 +49,8 @@ def ruett_scan():
     year2=2012
     month2=3
 
-    pasteSet = set()
+    link_set = set()# For cheap deduplication
+    link_list = []# So we can preserve order
 
     #This loop is executed as long as month and year are below a certain treshold
     while year*12+month <= currentYear*12+currentMonth:
@@ -103,7 +60,7 @@ def ruett_scan():
         for i in range(200):
             logging.info('Extracting from page '+str(i+1))
             #constructing the URL:
-            url = "https://desustorage.org/mlp/search/text/imgur/start/"+str(year)+"-"+str(month)+"-1/end/"+str(year2)+"-"+str(month2)+"-1/page/"+str(i+1)+"/#"
+            url = "https://desustorage.org/mlp/search/text/"+search_term+"/start/"+str(year)+"-"+str(month)+"-1/end/"+str(year2)+"-"+str(month2)+"-1/page/"+str(i+1)+"/#"
             logging.debug("url: "+repr(url))
             #getting the source code:
             attempt_counter = 0
@@ -132,11 +89,12 @@ def ruett_scan():
                 break
 
             #find pastebin links and add them to their respective sets:
-            for link in soup.find_all(href=re.compile('(?:http://)?(?:www.)?(?:i.)?imgur.com')):
-                pastebinLink = link.get('href')
-                if not pastebinLink in pasteSet:
-                    logging.debug("Adding new link: "+repr(pastebinLink))
-                    pasteSet.add(pastebinLink)
+            for link_result in soup.find_all(href=re.compile(link_pattern)):
+                link = link_result.get('href')
+                if not link in link_set:
+                    logging.debug("Adding new link: "+repr(link))
+                    link_set.add(link)
+                    link_list.append(link)
         month=month+1
         month2=month2+1
         if month==13:
@@ -147,7 +105,8 @@ def ruett_scan():
             year2=year2+1
 
     logging.info('Extraction finished')
-    return pasteSet
+    return link_list
+
 
 
 def scan_to_file(list_path):
