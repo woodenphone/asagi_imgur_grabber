@@ -40,7 +40,7 @@ def find_imgur_links_in_string(to_scan):
 
 
 
-def ruett_scan(search_term="imgur",link_pattern="(?:http://)?(?:www.)?(?:i.)?imgur.com'"):
+def ruett_scan(search_term="imgur",link_pattern="(?:http://)?(?:www.)?(?:i.)?imgur.com"):
     """Conversion from code by DER RUETTLER to do what we want"""
     currentYear=datetime.datetime.now().year
     currentMonth=datetime.datetime.now().month
@@ -144,7 +144,7 @@ def main():
         setup_logging(log_file_path=os.path.join("debug","foolfuuka_imgur_grabber-log.txt"))
 
         list_path = os.path.join("fould_imgur_links.txt")
-        #scan_to_file(list_path)
+        scan_to_file(list_path)
         download_link_list(
             list_path,
             output_path=os.path.join("output")
